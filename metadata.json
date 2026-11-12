@@ -1,0 +1,6 @@
+{
+  "name": "SPAK-TIK — Sistem Pengetahuan & Analisis Kebijakan TIK",
+  "description": "AI-Powered Knowledge Management & Advanced Policy Intelligence untuk Asisten Deputi Koordinasi Telekomunikasi dan Informatika, Kemenko Polkam.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
