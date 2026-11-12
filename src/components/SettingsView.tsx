@@ -36,12 +36,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newCatName, setNewCatName] = useState('');
   const [newCatDesc, setNewCatDesc] = useState('');
   const [isAddingCat, setIsAddingCat] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusSuccess, setStatusSuccess] = useState<string | null>(null);
 
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
 
     setIsAddingCat(true);
+    setStatusError(null);
     try {
       await api.createCategory({
         name: newCatName.trim(),
@@ -49,26 +52,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       });
       setNewCatName('');
       setNewCatDesc('');
+      setStatusSuccess(`Kategori "${newCatName.trim()}" berhasil ditambahkan.`);
+      setTimeout(() => setStatusSuccess(null), 3000);
       onRefresh();
     } catch (err: any) {
-      alert(`Gagal menambah kategori: ${err.message}`);
+      setStatusError(`Gagal menambah kategori: ${err.message}`);
     } finally {
       setIsAddingCat(false);
     }
   };
 
   const handleDeleteCategory = async (cat: CategoryRecord) => {
-    const confirmed = window.confirm(
-      `Hapus kategori "${cat.name}"? Jika masih digunakan oleh dokumen, hapus atau ubah kategori dokumen terlebih dahulu.`
-    );
-    if (!confirmed) return;
-
+    setStatusError(null);
     try {
       const res = await api.deleteCategory(cat.id);
       if (res.error) throw new Error(res.error);
+      setStatusSuccess(`Kategori "${cat.name}" berhasil dihapus.`);
+      setTimeout(() => setStatusSuccess(null), 3000);
       onRefresh();
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus kategori.');
+      setStatusError(err.message || 'Gagal menghapus kategori.');
     }
   };
 
@@ -82,6 +85,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           Kelola kategori Google Sheets, template dokumen, dan integritas workspace Google Drive
         </p>
       </div>
+
+      {statusError && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center justify-between shadow-xs">
+          <span>{statusError}</span>
+          <button onClick={() => setStatusError(null)} className="text-red-500 font-bold ml-2">&times;</button>
+        </div>
+      )}
+
+      {statusSuccess && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center justify-between shadow-xs">
+          <span>{statusSuccess}</span>
+          <button onClick={() => setStatusSuccess(null)} className="text-emerald-600 font-bold ml-2">&times;</button>
+        </div>
+      )}
 
       {/* Google Drive & Workspace Status */}
       <div className="bg-white rounded-xl p-5 border border-slate-200/80 shadow-xs space-y-3">

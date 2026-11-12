@@ -175,6 +175,25 @@ export async function exportAnalysisToDocx(analysis: AnalysisResultPayload): Pro
 }
 
 /**
+ * Cleans text of markdown and non-WinAnsi characters to prevent pdf-lib encoding crashes.
+ */
+function cleanForPdf(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/^#+\s*/gm, '')
+    .replace(/[\u2014\u2015]/g, ' - ') // em-dash, horizontal bar
+    .replace(/[\u2012\u2013]/g, '-')   // en-dash, figure dash
+    .replace(/[\u2018\u2019]/g, "'")   // curly single quotes
+    .replace(/[\u201C\u201D]/g, '"')   // curly double quotes
+    .replace(/[\u2022\u2023\u25E6\u2043\u2219]/g, '-') // bullets
+    .replace(/[\u2026]/g, '...')       // ellipsis
+    .replace(/[^\x00-\x7F\xA0-\xFF]/g, ' '); // remove any remaining non-WinAnsi characters
+}
+
+/**
  * Generates a clean A4 PDF report for policy analysis.
  */
 export async function exportAnalysisToPdf(analysis: AnalysisResultPayload): Promise<Buffer> {
@@ -183,49 +202,91 @@ export async function exportAnalysisToPdf(analysis: AnalysisResultPayload): Prom
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
 
-  let page = pdfDoc.addPage([595.28, 841.89]); // A4
+  let page = pdfDoc.addPage([595.28, 841.89]); // A4 standard
   const margin = 50;
   const contentWidth = 595.28 - margin * 2;
   let y = 841.89 - margin;
 
   const checkPageBreak = (neededHeight: number = 30) => {
-    if (y - neededHeight < margin) {
+    if (y - neededHeight < margin + 20) {
       page = pdfDoc.addPage([595.28, 841.89]);
       y = 841.89 - margin;
     }
   };
 
-  const drawWrappedText = (
+  const drawSafeText = (
     text: string,
-    fontSize: number = 10,
+    options: {
+      x: number;
+      y: number;
+      size: number;
+      font: any;
+      color: any;
+    }
+  ) => {
+    // Strip any raw newlines or carriage returns inside drawText
+    const singleLine = (text || '').replace(/[\r\n]+/g, ' ').trim();
+    if (!singleLine) return;
+    try {
+      page.drawText(singleLine, options);
+    } catch {
+      // Fallback: replace any character that fails WinAnsi with ASCII safe space
+      const asciiOnly = singleLine.replace(/[^\x20-\x7E]/g, ' ');
+      page.drawText(asciiOnly, options);
+    }
+  };
+
+  const drawParagraphs = (
+    text: string,
+    fontSize: number = 9.5,
     font = fontRegular,
     color = rgb(0.1, 0.1, 0.15),
     lineHeight: number = 14
   ) => {
-    const words = (text || '').split(' ');
-    let currentLine = '';
+    const cleaned = cleanForPdf(text);
+    const paragraphs = cleaned.split(/\r?\n/);
 
-    for (const w of words) {
-      const testLine = currentLine ? `${currentLine} ${w}` : w;
-      const textWidth = font.widthOfTextAtSize(testLine, fontSize);
-      if (textWidth > contentWidth) {
+    for (const para of paragraphs) {
+      const trimmed = para.trim();
+      if (!trimmed) {
+        y -= lineHeight * 0.45;
         checkPageBreak(lineHeight);
-        page.drawText(currentLine, { x: margin, y, size: fontSize, font, color });
-        y -= lineHeight;
-        currentLine = w;
-      } else {
-        currentLine = testLine;
+        continue;
       }
-    }
-    if (currentLine) {
-      checkPageBreak(lineHeight);
-      page.drawText(currentLine, { x: margin, y, size: fontSize, font, color });
-      y -= lineHeight;
+
+      const words = trimmed.split(/\s+/);
+      let currentLine = '';
+
+      for (const w of words) {
+        if (!w) continue;
+        const testLine = currentLine ? `${currentLine} ${w}` : w;
+        let textWidth = 0;
+        try {
+          textWidth = font.widthOfTextAtSize(testLine, fontSize);
+        } catch {
+          textWidth = testLine.length * fontSize * 0.55;
+        }
+
+        if (textWidth > contentWidth && currentLine) {
+          checkPageBreak(lineHeight);
+          drawSafeText(currentLine, { x: margin, y, size: fontSize, font, color });
+          y -= lineHeight;
+          currentLine = w;
+        } else {
+          currentLine = testLine;
+        }
+      }
+
+      if (currentLine) {
+        checkPageBreak(lineHeight);
+        drawSafeText(currentLine, { x: margin, y, size: fontSize, font, color });
+        y -= lineHeight;
+      }
     }
   };
 
-  // Header
-  page.drawText('KEMENTERIAN KOORDINATOR BIDANG POLITIK DAN KEAMANAN RI', {
+  // Header Kemenko Polkam
+  drawSafeText('KEMENTERIAN KOORDINATOR BIDANG POLITIK DAN KEAMANAN RI', {
     x: margin,
     y,
     size: 11,
@@ -233,7 +294,7 @@ export async function exportAnalysisToPdf(analysis: AnalysisResultPayload): Prom
     color: rgb(0.09, 0.21, 0.36),
   });
   y -= 15;
-  page.drawText('ASISTEN DEPUTI KOORDINASI TELEKOMUNIKASI DAN INFORMATIKA', {
+  drawSafeText('ASISTEN DEPUTI KOORDINASI TELEKOMUNIKASI DAN INFORMATIKA', {
     x: margin,
     y,
     size: 9,
@@ -243,9 +304,9 @@ export async function exportAnalysisToPdf(analysis: AnalysisResultPayload): Prom
   y -= 25;
 
   // Title
-  drawWrappedText(analysis.title.toUpperCase(), 15, fontBold, rgb(0.09, 0.21, 0.36), 18);
-  y -= 6;
-  drawWrappedText(
+  drawParagraphs(analysis.title.toUpperCase(), 14, fontBold, rgb(0.09, 0.21, 0.36), 18);
+  y -= 4;
+  drawParagraphs(
     `Topik: ${analysis.topic} | Tipe: ${analysis.type} | Kedalaman: ${analysis.depth}`,
     9,
     fontItalic,
@@ -267,24 +328,24 @@ export async function exportAnalysisToPdf(analysis: AnalysisResultPayload): Prom
 
   for (const [title, body] of chapters) {
     checkPageBreak(35);
-    page.drawText(title, {
+    drawSafeText(title, {
       x: margin,
       y,
-      size: 11,
+      size: 10.5,
       font: fontBold,
       color: rgb(0.09, 0.21, 0.36),
     });
     y -= 16;
-    drawWrappedText(body, 9.5, fontRegular, rgb(0.1, 0.1, 0.15), 14);
-    y -= 10;
+    drawParagraphs(body, 9, fontRegular, rgb(0.1, 0.1, 0.15), 13.5);
+    y -= 8;
   }
 
   // Chapter IX: Sources
   checkPageBreak(40);
-  page.drawText('IX. Sumber dan Referensi', {
+  drawSafeText('IX. Sumber dan Referensi', {
     x: margin,
     y,
-    size: 11,
+    size: 10.5,
     font: fontBold,
     color: rgb(0.09, 0.21, 0.36),
   });
@@ -292,12 +353,30 @@ export async function exportAnalysisToPdf(analysis: AnalysisResultPayload): Prom
 
   const sources = analysis.sections.sumber_dan_referensi || [];
   if (sources.length === 0) {
-    drawWrappedText('Tidak ada dokumen rujukan yang tercatat.', 9, fontItalic, rgb(0.4, 0.45, 0.55), 12);
+    drawParagraphs('Tidak ada dokumen rujukan yang tercatat.', 9, fontItalic, rgb(0.4, 0.45, 0.55), 12);
   } else {
     sources.forEach((s, idx) => {
-      drawWrappedText(`${idx + 1}. ${s.replace(/^\d+\.\s*/, '')}`, 8.5, fontItalic, rgb(0.2, 0.25, 0.35), 12);
+      drawParagraphs(`${idx + 1}. ${s.replace(/^\d+\.\s*/, '')}`, 8.5, fontItalic, rgb(0.2, 0.25, 0.35), 12);
       y -= 3;
     });
+  }
+
+  // Add Page Numbers at footer
+  const pages = pdfDoc.getPages();
+  const totalPages = pages.length;
+  for (let i = 0; i < totalPages; i++) {
+    const p = pages[i];
+    try {
+      p.drawText(`Halaman ${i + 1} dari ${totalPages}  |  SPAK-TIK Kemenko Polkam RI`, {
+        x: margin,
+        y: 25,
+        size: 8,
+        font: fontItalic,
+        color: rgb(0.5, 0.55, 0.65),
+      });
+    } catch {
+      // ignore
+    }
   }
 
   const pdfBytes = await pdfDoc.save();

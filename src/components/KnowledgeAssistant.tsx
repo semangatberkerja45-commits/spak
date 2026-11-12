@@ -72,10 +72,13 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ document
         selectedDocIds.length > 0 ? selectedDocIds : undefined
       );
 
+      const defaultHelpMsg =
+        'Informasi spesifik untuk pertanyaan tersebut belum tercantum dalam ringkasan dokumen Pusat Pengetahuan. Silakan gunakan pertanyaan terkait isu BTS 4G wilayah 3T, Pusat Data Nasional (PDN Cikarang & DRC Batam/IKN), pengamanan kabel laut (SKKL), atau SOP komunikasi darurat sandi negara.';
+
       const aiMsg: AssistantMessage = {
         id: `ai_${Date.now()}`,
         role: 'assistant',
-        content: res.answer || 'Tidak dapat memproses jawaban.',
+        content: res.answer && res.answer.trim().length > 0 ? res.answer : defaultHelpMsg,
         references: res.references || [],
         qualityReview: res.qualityReview,
         timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
@@ -86,7 +89,7 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ document
       const errorMsg: AssistantMessage = {
         id: `err_${Date.now()}`,
         role: 'assistant',
-        content: `Terjadi kendala saat menghubungi AI Engine: ${err.message}`,
+        content: `Terjadi kendala saat memproses telaahan pengetahuan: ${err.message || 'Layanan sedang memuat ulang'}. Pastikan dokumen rujukan aktif di Pusat Pengetahuan atau coba ajukan kembali pertanyaan Anda.`,
         timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, errorMsg]);

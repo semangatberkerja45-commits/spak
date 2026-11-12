@@ -38,6 +38,12 @@ export default function App() {
 
   const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
   const [isSeedingDemo, setIsSeedingDemo] = useState<boolean>(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4500);
+  };
 
   // Load app data
   const loadWorkspaceData = async () => {
@@ -55,7 +61,18 @@ export default function App() {
         api.listTemplates(),
       ]);
 
-      if (docsRes.documents) setDocuments(docsRes.documents);
+      let loadedDocs = docsRes.documents || [];
+      if (loadedDocs.length === 0) {
+        try {
+          await api.seedDemo();
+          const refreshed = await api.listDocuments();
+          if (refreshed.documents) loadedDocs = refreshed.documents;
+        } catch (e) {
+          console.warn('Auto-seed initial demo dataset error:', e);
+        }
+      }
+
+      setDocuments(loadedDocs);
       if (catsRes.categories) setCategories(catsRes.categories);
       if (ansRes.analyses) setAnalyses(ansRes.analyses);
       if (tplsRes.templates) setTemplates(tplsRes.templates);
@@ -101,9 +118,10 @@ export default function App() {
         setIsAuthenticated(true);
         setUserEmail(result.user.email || 'Analis Kebijakan');
         await loadWorkspaceData();
+        showToast('Berhasil terhubung ke akun Google Drive.', 'success');
       }
     } catch (err: any) {
-      alert(`Gagal menghubungkan Google Drive: ${err.message}`);
+      showToast(`Gagal menghubungkan Google Drive: ${err.message}`, 'error');
     } finally {
       setIsLoggingIn(false);
     }
@@ -114,6 +132,7 @@ export default function App() {
     setIsAuthenticated(true);
     setUserEmail(session.user.email || 'analis.demo@polkam.go.id');
     loadWorkspaceData();
+    showToast('Terhubung ke Mode Pratinjau Sandbox SPAK-TIK.', 'info');
   };
 
   const handleLogout = async () => {
@@ -127,39 +146,35 @@ export default function App() {
     setIsSeedingDemo(true);
     try {
       const res = await api.seedDemo();
-      alert(res.message || 'Data demo 20 file simulasi berhasil diproses.');
+      showToast(res.message || 'Data demo 20 file simulasi berhasil diproses.', 'success');
       await loadWorkspaceData();
     } catch (err: any) {
-      alert(`Gagal memuat data demo: ${err.message}`);
+      showToast(`Gagal memuat data demo: ${err.message}`, 'error');
     } finally {
       setIsSeedingDemo(false);
     }
   };
 
   const handleResetDemo = async () => {
-    const confirmed = window.confirm(
-      'Reset data demo? Semua dokumen simulasi akan dihapus dari Google Drive, namun dokumen resmi pengguna akan tetap utuh.'
-    );
-    if (!confirmed) return;
-
     try {
       const res = await api.resetDemo();
-      alert(res.message || 'Data demo berhasil direset.');
+      showToast(res.message || 'Data demo berhasil direset.', 'info');
       await loadWorkspaceData();
     } catch (err: any) {
-      alert(`Gagal mereset data demo: ${err.message}`);
+      showToast(`Gagal mereset data demo: ${err.message}`, 'error');
     }
   };
 
   const handleReconcile = async () => {
     try {
       const res = await api.reconcileWorkspace();
-      alert(
-        `Hasil Pemeriksaan Konsistensi Workspace:\n- Total Dokumen Diperiksa: ${res.totalDocumentsChecked}\n- Masalah Ditemukan: ${res.issuesCount}\n\n${res.recommendations}`
+      showToast(
+        `Konsistensi Workspace: ${res.totalDocumentsChecked} dokumen diperiksa. ${res.recommendations}`,
+        'info'
       );
       await loadWorkspaceData();
     } catch (err: any) {
-      alert(`Gagal menjalankan reconcile: ${err.message}`);
+      showToast(`Gagal menjalankan reconcile: ${err.message}`, 'error');
     }
   };
 
@@ -387,6 +402,30 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      {/* Floating Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-5 right-5 z-50 max-w-md bg-white border border-slate-200 shadow-lg rounded-xl p-3 flex items-start gap-3 transition-all animate-in fade-in slide-in-from-bottom-2">
+          <div
+            className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+              toast.type === 'success'
+                ? 'bg-emerald-500'
+                : toast.type === 'error'
+                ? 'bg-red-500'
+                : 'bg-blue-500'
+            }`}
+          />
+          <div className="flex-1 text-xs text-slate-800 font-medium">
+            {toast.message}
+          </div>
+          <button
+            onClick={() => setToast(null)}
+            className="text-slate-400 hover:text-slate-600 font-bold text-xs"
+          >
+            &times;
+          </button>
+        </div>
+      )}
     </div>
   );
 }

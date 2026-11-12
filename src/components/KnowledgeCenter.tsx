@@ -11,6 +11,8 @@ import {
   AlertCircle,
   FileSpreadsheet,
   Layers,
+  X,
+  RefreshCw,
 } from 'lucide-react';
 import { DocumentRecord, CategoryRecord } from '../types/spak';
 import { api } from '../utils/apiClient';
@@ -98,17 +100,24 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({
     }
   };
 
-  const handleDelete = async (doc: DocumentRecord) => {
-    const confirmed = window.confirm(
-      `Hapus dokumen "${doc.title}" dari Google Drive dan database pengetahuan? Tindakan ini tidak dapat dibatalkan.`
-    );
-    if (!confirmed) return;
+  // Delete Confirmation Modal
+  const [docToDelete, setDocToDelete] = useState<DocumentRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
+  const confirmDelete = async () => {
+    if (!docToDelete) return;
+    setIsDeleting(true);
+    setUploadError(null);
     try {
-      await api.deleteDocument(doc.id);
+      await api.deleteDocument(docToDelete.id);
+      setUploadSuccess(`Dokumen "${docToDelete.title}" berhasil dihapus dari Google Drive.`);
+      setTimeout(() => setUploadSuccess(null), 3500);
+      setDocToDelete(null);
       onRefresh();
     } catch (err: any) {
-      alert(`Gagal menghapus dokumen: ${err.message}`);
+      setUploadError(`Gagal menghapus dokumen: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -118,7 +127,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({
       const res = await api.getDocument(doc.id);
       setPreviewDoc(res);
     } catch (err: any) {
-      alert('Gagal memuat detail dokumen.');
+      setUploadError('Gagal memuat detail pratinjau dokumen.');
     } finally {
       setPreviewLoading(false);
     }
@@ -346,9 +355,9 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({
                           <Download size={15} />
                         </a>
                         <button
-                          onClick={() => handleDelete(doc)}
+                          onClick={() => setDocToDelete(doc)}
                           title="Hapus Dokumen"
-                          className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-slate-100 rounded transition-colors"
+                          className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -431,6 +440,101 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({
                 className="px-4 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
               >
                 Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POP-UP MODAL KONFIRMASI HAPUS DOKUMEN */}
+      {docToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all">
+            {/* Header Modal */}
+            <div className="p-4 px-5 border-b border-slate-100 flex items-center justify-between bg-rose-50/70">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                  <Trash2 size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Konfirmasi Hapus Dokumen
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Pusat Pengetahuan SPAK-TIK
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isDeleting && setDocToDelete(null)}
+                disabled={isDeleting}
+                className="text-slate-400 hover:text-slate-600 font-bold p-1 rounded-lg hover:bg-white/60 transition-colors"
+                title="Batal"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Isi Dokumen yang Akan Dihapus */}
+            <div className="p-5 space-y-3.5 text-xs text-slate-600">
+              <p className="leading-relaxed">
+                Apakah Anda yakin ingin menghapus dokumen berikut dari sistem?
+              </p>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
+                <div className="font-semibold text-slate-900 line-clamp-2 text-xs">
+                  {docToDelete.title}
+                </div>
+                <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-slate-700">{docToDelete.source_agency || '-'}</span>
+                  <span>·</span>
+                  <span className="font-mono uppercase font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded text-[10px]">
+                    {docToDelete.file_name.split('.').pop() || 'FILE'}
+                  </span>
+                  <span>·</span>
+                  <span>{docToDelete.document_date || '-'}</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono truncate">
+                  Nama File: {docToDelete.file_name}
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-2.5">
+                <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">
+                  File fisik di Google Drive, data ekstraksi indeks pengetahuan RAG, dan seluruh keterkaitan sitasi dokumen ini akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan.
+                </span>
+              </div>
+            </div>
+
+            {/* Tombol Aksi */}
+            <div className="p-4 px-5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setDocToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors shadow-2xs"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 rounded-lg transition-colors shadow-xs"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw size={13} className="animate-spin" />
+                    <span>Menghapus Dokumen...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={13} />
+                    <span>Ya, Hapus Dokumen</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

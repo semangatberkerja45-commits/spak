@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Layers,
   Edit3,
+  AlertCircle,
 } from 'lucide-react';
 import {
   DocumentRecord,
@@ -61,6 +62,7 @@ export const PolicyAnalysisWorkflow: React.FC<PolicyAnalysisWorkflowProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editedSections, setEditedSections] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const analysisTypes: AnalysisType[] = [
@@ -83,8 +85,15 @@ export const PolicyAnalysisWorkflow: React.FC<PolicyAnalysisWorkflowProps> = ({
   ];
 
   const handleStartAnalysis = async () => {
-    if (!title || !topic) {
-      alert('Judul dan topik kajian kebijakan wajib diisi.');
+    setErrorMessage(null);
+    if (!title || !title.trim()) {
+      setErrorMessage('Judul kajian kebijakan wajib diisi.');
+      setStep(1);
+      return;
+    }
+    if (!topic || !topic.trim()) {
+      setErrorMessage('Topik kajian kebijakan wajib dipilih.');
+      setStep(1);
       return;
     }
 
@@ -94,12 +103,13 @@ export const PolicyAnalysisWorkflow: React.FC<PolicyAnalysisWorkflowProps> = ({
 
     try {
       // 1. Create Analysis record
+      const docsToAnalyze = selectedDocIds.length > 0 ? selectedDocIds : documents.map((d) => d.id);
       const created = await api.createAnalysis({
-        title,
-        topic,
+        title: title.trim(),
+        topic: topic.trim(),
         type: analysisType,
         depth,
-        selected_document_ids: selectedDocIds,
+        selected_document_ids: docsToAnalyze,
       });
 
       if (!created.analysis?.id) {
@@ -107,7 +117,7 @@ export const PolicyAnalysisWorkflow: React.FC<PolicyAnalysisWorkflowProps> = ({
       }
 
       setAnalysisId(created.analysis.id);
-      setProcessStage('Menjalankan Knowledge Retrieval Agent (ekstraksi cuplikan bukti)...');
+      setProcessStage('Menjalankan Tiga AI Agent: Ekstraksi bukti, sintesis 9 bab, dan review sumber...');
 
       // 2. Run analysis
       const res = await api.runAnalysis(created.analysis.id, {
@@ -128,7 +138,7 @@ export const PolicyAnalysisWorkflow: React.FC<PolicyAnalysisWorkflowProps> = ({
       setStep(5);
       onAnalysisSaved();
     } catch (err: any) {
-      alert(`Gagal menjalankan analisis: ${err.message}`);
+      setErrorMessage(`Kendala menjalankan analisis kebijakan: ${err.message || 'Terjadi kesalahan sistem'}.`);
       setStep(3);
     } finally {
       setIsRunning(false);
@@ -139,27 +149,36 @@ export const PolicyAnalysisWorkflow: React.FC<PolicyAnalysisWorkflowProps> = ({
     if (!analysisId || !editedSections) return;
     setIsSaving(true);
     setSaveNotice(null);
+    setErrorMessage(null);
     try {
       await api.updateAnalysis(analysisId, {
         sections: editedSections,
       });
       setSaveNotice('Perubahan hasil analisis berhasil disimpan ke Google Drive dan Google Sheets.');
-      setTimeout(() => setSaveNotice(null), 3000);
+      setTimeout(() => setSaveNotice(null), 3500);
       setIsEditing(false);
       onAnalysisSaved();
     } catch (err: any) {
-      alert(`Gagal menyimpan: ${err.message}`);
+      setErrorMessage(`Gagal menyimpan perubahan: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
   };
 
+  const [exportingFormat, setExportingFormat] = useState<'DOCX' | 'PDF' | null>(null);
+
   const handleExport = async (format: 'DOCX' | 'PDF') => {
     if (!analysisId) return;
+    setErrorMessage(null);
+    setExportingFormat(format);
     try {
       await api.exportAnalysis(analysisId, format);
+      setSaveNotice(`Dokumen ${format} berhasil diunduh ke perangkat Anda.`);
+      setTimeout(() => setSaveNotice(null), 3500);
     } catch (err: any) {
-      alert(`Gagal mengekspor: ${err.message}`);
+      setErrorMessage(`Gagal mengekspor dokumen ${format}: ${err.message}`);
+    } finally {
+      setExportingFormat(null);
     }
   };
 
@@ -193,6 +212,28 @@ export const PolicyAnalysisWorkflow: React.FC<PolicyAnalysisWorkflowProps> = ({
           ))}
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-red-600 shrink-0" />
+            <span className="font-medium">{errorMessage}</span>
+          </div>
+          <button
+            onClick={() => setErrorMessage(null)}
+            className="text-red-500 hover:text-red-700 text-sm font-bold px-1"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
+      {saveNotice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2 shadow-xs">
+          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+          <span className="font-medium">{saveNotice}</span>
+        </div>
+      )}
 
       {/* HALAMAN 1: BUAT ANALISIS */}
       {step === 1 && (
@@ -293,7 +334,11 @@ export const PolicyAnalysisWorkflow: React.FC<PolicyAnalysisWorkflowProps> = ({
           <div className="flex justify-end pt-3">
             <button
               onClick={() => {
-                if (!title) return alert('Mohon isi Judul Kajian.');
+                if (!title || !title.trim()) {
+                  setErrorMessage('Mohon isi Judul Kajian terlebih dahulu.');
+                  return;
+                }
+                setErrorMessage(null);
                 setStep(2);
               }}
               className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-xs"
@@ -550,18 +595,28 @@ export const PolicyAnalysisWorkflow: React.FC<PolicyAnalysisWorkflowProps> = ({
 
               <button
                 onClick={() => handleExport('DOCX')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                disabled={Boolean(exportingFormat)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg transition-colors"
               >
-                <Download size={13} />
-                <span>Ekspor DOCX</span>
+                {exportingFormat === 'DOCX' ? (
+                  <RefreshCw size={13} className="animate-spin text-blue-600" />
+                ) : (
+                  <Download size={13} />
+                )}
+                <span>{exportingFormat === 'DOCX' ? 'Mengunduh DOCX...' : 'Ekspor DOCX'}</span>
               </button>
 
               <button
                 onClick={() => handleExport('PDF')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                disabled={Boolean(exportingFormat)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg transition-colors"
               >
-                <Download size={13} />
-                <span>Ekspor PDF</span>
+                {exportingFormat === 'PDF' ? (
+                  <RefreshCw size={13} className="animate-spin text-rose-600" />
+                ) : (
+                  <Download size={13} />
+                )}
+                <span>{exportingFormat === 'PDF' ? 'Mengunduh PDF...' : 'Ekspor PDF'}</span>
               </button>
             </div>
           </div>

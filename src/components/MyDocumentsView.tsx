@@ -27,24 +27,32 @@ export const MyDocumentsView: React.FC<MyDocumentsViewProps> = ({
     payload: AnalysisResultPayload | null;
   } | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const handleOpenDetail = async (record: AnalysisRecord) => {
     setIsLoadingDetail(true);
+    setActionError(null);
     try {
       const res = await api.getAnalysis(record.id);
       setSelectedAnalysis({ record: res.analysis, payload: res.payload });
     } catch (err: any) {
-      alert(`Gagal memuat kajian: ${err.message}`);
+      setActionError(`Gagal memuat kajian: ${err.message}`);
     } finally {
       setIsLoadingDetail(false);
     }
   };
 
   const handleExport = async (id: string, format: 'DOCX' | 'PDF') => {
+    setActionError(null);
+    setActionNotice(`Mempersiapkan ekspor ${format}...`);
     try {
       await api.exportAnalysis(id, format);
+      setActionNotice(`Berhasil mengunduh dokumen ${format}.`);
+      setTimeout(() => setActionNotice(null), 3500);
     } catch (err: any) {
-      alert(`Gagal mengekspor: ${err.message}`);
+      setActionError(`Gagal mengekspor: ${err.message}`);
+      setActionNotice(null);
     }
   };
 
@@ -69,6 +77,20 @@ export const MyDocumentsView: React.FC<MyDocumentsViewProps> = ({
           <span>Kajian Baru</span>
         </button>
       </div>
+
+      {actionError && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center justify-between shadow-xs">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="text-red-500 font-bold ml-2">&times;</button>
+        </div>
+      )}
+
+      {actionNotice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center justify-between shadow-xs">
+          <span>{actionNotice}</span>
+          <button onClick={() => setActionNotice(null)} className="text-emerald-600 font-bold ml-2">&times;</button>
+        </div>
+      )}
 
       {analyses.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-12 text-center">
@@ -133,10 +155,19 @@ export const MyDocumentsView: React.FC<MyDocumentsViewProps> = ({
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleExport(item.id, 'DOCX')}
-                    className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded"
+                    className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded transition-colors"
                     title="Unduh DOCX"
                   >
                     <Download size={14} />
+                    <span className="text-[10px] font-bold ml-1">DOCX</span>
+                  </button>
+                  <button
+                    onClick={() => handleExport(item.id, 'PDF')}
+                    className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-slate-100 rounded transition-colors"
+                    title="Unduh PDF"
+                  >
+                    <Download size={14} />
+                    <span className="text-[10px] font-bold ml-1">PDF</span>
                   </button>
                 </div>
               </div>
